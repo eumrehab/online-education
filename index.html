@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="복지용구 상담사 온라인 교육원" />
+  <title>복지용구 상담사 온라인 교육원</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./admin.css" />
+  <link rel="stylesheet" href="./course-cards.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="교육원 홈">
+      <span class="brand-mark">온</span>
+      <span><b>복지용구 상담사</b><small>온라인 교육원</small></span>
+    </a>
+    <div id="userArea" class="user-area hidden">
+      <span id="userName"></span>
+      <button id="logoutBtn" class="text-button" type="button">로그아웃</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="loginView" class="login-view">
+      <div class="login-copy">
+        <span class="eyebrow">ONLINE LEARNING</span>
+        <h1>배움의 시간을<br /><em>차곡차곡</em> 기록합니다.</h1>
+        <p>등록된 수강생 정보로 로그인하여 교육을 시작해 주세요.</p>
+        <div class="trust-row">
+          <span>✓ 안전한 본인 확인</span><span>✓ 자동 진도 저장</span><span>✓ 이어보기 지원</span>
+        </div>
+      </div>
+      <form id="loginForm" class="login-card">
+        <div>
+          <span class="step-label">수강생 로그인</span>
+          <h2>교육을 시작해 볼까요?</h2>
+          <p>등록 시 입력한 정보를 정확하게 입력해 주세요.</p>
+        </div>
+        <label>학번<input id="studentId" inputmode="numeric" autocomplete="username" placeholder="학번을 입력하세요" required /></label>
+        <label>이름<input id="studentName" autocomplete="name" placeholder="이름을 입력하세요" required /></label>
+        <label>생년월일 6자리<input id="birthDate" type="text" inputmode="numeric" autocomplete="bday" placeholder="예: 980103" maxlength="6" pattern="[0-9]{6}" required /></label>
+        <p id="loginError" class="error" role="alert"></p>
+        <button class="primary-button" type="submit">로그인</button>
+        <button id="openAdminLogin" class="secondary-button" type="button">관리자 로그인</button>
+        <details class="demo-help">
+          <summary>데모 로그인 정보</summary>
+          <p>학번 2026001 · 이름 홍길동 · 생년월일 900101</p>
+        </details>
+      </form>
+    </section>
+
+    <section id="adminLoginView" class="login-view hidden">
+      <div class="login-copy">
+        <span class="eyebrow">ADMIN ACCESS</span>
+        <h1>교육 운영을 위한<br /><em>관리자 로그인</em></h1>
+        <p>승인된 관리자 계정으로 로그인해 주세요.</p>
+      </div>
+      <form id="adminLoginForm" class="login-card">
+        <div><span class="step-label">관리자 전용</span><h2>관리자 로그인</h2><p>관리자 아이디와 비밀번호를 입력해 주세요.</p></div>
+        <label>아이디<input id="adminId" type="text" autocomplete="username" placeholder="관리자 아이디" required /></label>
+        <label>비밀번호<input id="adminPassword" type="password" autocomplete="current-password" placeholder="비밀번호" required /></label>
+        <p id="adminLoginError" class="error" role="alert"></p>
+        <button class="primary-button" type="submit">관리자 로그인</button>
+        <button id="backToStudentLogin" class="secondary-button" type="button">수강생 로그인으로 돌아가기</button>
+      </form>
+    </section>
+
+    <section id="classroomView" class="app-view hidden">
+      <div class="page-heading">
+        <div><span class="eyebrow">MY CLASSROOM</span><h1>나의 강의실</h1><p>총 8개의 강의를 모두 수강하면 시험에 응시할 수 있습니다.</p></div>
+        <div class="overall-card"><span>전체 수강률</span><strong id="overallPercent">0%</strong><div class="progress"><i id="overallBar"></i></div><small id="overallCount">0 / 8강 완료</small></div>
+      </div>
+
+      <section class="course-catalog" aria-labelledby="courseCatalogTitle">
+        <div class="catalog-heading"><div><span class="step-label">COURSE LIST</span><h2 id="courseCatalogTitle">교육 과정</h2></div><p>수강할 강의를 선택해 주세요.</p></div>
+        <nav id="lessonList" class="lesson-list" aria-label="강의 목록"></nav>
+      </section>
+
+      <section class="exam-gate">
+        <div class="exam-icon">✓</div>
+        <div><span class="step-label">FINAL TEST</span><h2>교육과정 평가시험</h2><p id="examGateMessage">8개 강의를 모두 완료하면 시험에 응시할 수 있습니다.</p></div>
+        <button id="startExamBtn" class="primary-button" type="button" disabled>시험 응시하기</button>
+      </section>
+    </section>
+
+    <section id="lessonView" class="app-view lesson-view hidden">
+      <div class="lesson-page-nav">
+        <button id="returnToClassroom" class="secondary-button back-button" type="button"><span aria-hidden="true">←</span> 나의 강의실로 돌아가기</button>
+        <span id="lessonModeBadge" class="lesson-mode-badge">학습 중</span>
+      </div>
+      <div id="playerSection" class="classroom-layout player-layout">
+        <article class="player-panel">
+          <div class="video-shell">
+            <video id="lessonVideo" preload="metadata" playsinline controls controlsList="nodownload noplaybackrate"></video>
+            <div id="videoEmpty" class="video-empty hidden"><span>▶</span><p>영상 파일을 준비하고 있습니다.</p></div>
+          </div>
+          <div class="lesson-meta">
+            <div><span id="lessonNumber" class="step-label">1강</span><h2 id="lessonTitle"></h2><p id="lessonDescription"></p></div>
+            <div class="lesson-progress"><strong id="lessonPercent">0%</strong><span>유효 수강률</span></div>
+          </div>
+          <div class="notice"><b>진도율 안내</b><p>정속(1.0배속)으로 실제 재생한 구간만 인정됩니다. 일시정지, 빨리감기, 건너뛰기 시간은 진도에 포함되지 않습니다.</p></div>
+          <div class="lesson-actions"><button id="prevLesson" class="secondary-button" type="button">이전 강의</button><button id="nextLesson" class="secondary-button" type="button">다음 강의</button></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="examView" class="app-view narrow hidden">
+      <div class="exam-header"><span class="eyebrow">FINAL TEST</span><h1>교육과정 평가시험</h1><p>모든 문항에 답한 뒤 제출해 주세요. 제출 후에는 답안을 수정할 수 없습니다.</p></div>
+      <form id="examForm" class="question-list"></form>
+    </section>
+
+    <section id="completeView" class="complete-view hidden">
+      <div class="complete-card"><div class="complete-mark">✓</div><span class="eyebrow">SUBMITTED</span><h1>시험이 정상적으로<br />제출되었습니다.</h1><p>교육과정을 이수하시느라 고생 많으셨습니다.<br />시험 결과는 확인 후 추후 안내해 드리겠습니다.</p><div id="submissionInfo" class="submission-info"></div><button id="backToClassroom" class="secondary-button" type="button">강의실로 돌아가기</button></div>
+    </section>
+
+    <section id="adminView" class="app-view hidden">
+      <div class="page-heading admin-heading">
+        <div><span class="eyebrow">ADMIN DASHBOARD</span><h1>교육 운영 현황</h1><p>수강생별 진도와 시험 제출 여부를 확인할 수 있습니다.</p></div>
+        <button id="refreshAdmin" class="secondary-button" type="button">현황 새로고침</button>
+      </div>
+      <div class="admin-summary">
+        <article><span>전체 수강생</span><strong id="adminStudentCount">0명</strong></article>
+        <article><span>수강 완료</span><strong id="adminCompleteCount">0명</strong></article>
+        <article><span>시험 제출</span><strong id="adminSubmitCount">0명</strong></article>
+      </div>
+      <section class="admin-table-card">
+        <div class="table-title"><div><h2>수강생 현황</h2><p>현재 데모 브라우저에 저장된 기록입니다.</p></div><span class="admin-only-badge">관리자 전용</span></div>
+        <div class="table-scroll"><table><thead><tr><th>학번</th><th>이름</th><th>전체 진도율</th><th>완료 강의</th><th>시험 상태</th><th>점수</th><th>판정</th><th>제출 일시</th></tr></thead><tbody id="adminTableBody"></tbody></table></div>
+      </section>
+      <div class="admin-note"><b>운영 전 확인</b><p>실제 배포 시 이 화면의 데이터는 서버에서 관리자 권한을 다시 확인한 후 불러옵니다. Google Sheets 주소와 인증정보는 수강생 브라우저에 노출하지 않습니다.</p></div>
+    </section>
+  </main>
+  <footer>© 2026 복지용구 상담사 온라인 교육원</footer>
+  <script src="./app.js"></script>
+</body>
+</html>
