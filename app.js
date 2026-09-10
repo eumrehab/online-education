@@ -329,11 +329,15 @@ function authenticateStudent(values) {
     };
     const receive = event => {
       const data = event.data;
-      const trustedGoogleOrigin = event.origin === "https://script.google.com" || /^https:\/\/[^/]+-script\.googleusercontent\.com$/.test(event.origin);
+      // Chrome에서는 Apps Script 샌드박스 메시지의 origin이 "null"일 수 있다.
+      // 요청별 nonce와 고정 source도 함께 확인하므로 이 경우를 허용한다.
+      const trustedGoogleOrigin = event.origin === "null"
+        || event.origin === "https://script.google.com"
+        || /^https:\/\/[^/]+-script\.googleusercontent\.com$/.test(event.origin);
       if (!trustedGoogleOrigin || !data || data.source !== "welfare-course-login" || data.nonce !== nonce) return;
       cleanup(data);
     };
-    const timer = setTimeout(() => cleanup({ ok: false, message: "로그인 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." }), 15000);
+    const timer = setTimeout(() => cleanup({ ok: false, message: "로그인 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." }), 30000);
     window.addEventListener("message", receive);
     frame.name = frameName;
     frame.hidden = true;
