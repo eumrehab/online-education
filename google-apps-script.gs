@@ -48,7 +48,7 @@ function authenticateStudent(book, data) {
     const attemptKey = loginAttemptKey(data.studentId);
     const attempts = Number(cache.get(attemptKey) || 0);
     if (attempts >= 10) throw new Error("로그인 시도가 너무 많습니다. 10분 후 다시 시도해 주세요.");
-    const sheet = book.getSheetByName("수강생 명단");
+    const sheet = findSheetByNormalizedName(book, "수강생명단");
     if (!sheet || sheet.getLastRow() < 2) throw new Error("수강생 명단이 등록되지 않았습니다.");
     const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getDisplayValues();
     const inputBirth = normalizeBirthDate(data.birthDate);
@@ -76,6 +76,10 @@ function authenticateStudent(book, data) {
   } catch (error) {
     return loginResponse({ ok: false, nonce, message: error.message });
   }
+}
+
+function findSheetByNormalizedName(book, normalizedName) {
+  return book.getSheets().find(sheet => sheet.getName().replace(/\s/g, "") === normalizedName) || null;
 }
 
 function hasStudentRecord(sheet, studentId) {
@@ -114,7 +118,7 @@ function normalizeBirthDate(value) {
 function loginResponse(data) {
   data.source = "welfare-course-login";
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
-  return HtmlService.createHtmlOutput("<script>parent.postMessage(" + json + ", '*');</script>")
+  return HtmlService.createHtmlOutput("<script>window.top.postMessage(" + json + ", '*');</script>")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 

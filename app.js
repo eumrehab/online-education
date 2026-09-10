@@ -329,7 +329,8 @@ function authenticateStudent(values) {
     };
     const receive = event => {
       const data = event.data;
-      if (event.source !== frame.contentWindow || !data || data.source !== "welfare-course-login" || data.nonce !== nonce) return;
+      const trustedGoogleOrigin = event.origin === "https://script.google.com" || /^https:\/\/[^/]+-script\.googleusercontent\.com$/.test(event.origin);
+      if (!trustedGoogleOrigin || !data || data.source !== "welfare-course-login" || data.nonce !== nonce) return;
       cleanup(data);
     };
     const timer = setTimeout(() => cleanup({ ok: false, message: "로그인 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." }), 15000);
