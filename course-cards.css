@@ -186,6 +186,10 @@
 .course-action:hover { background: #105d46; }
 .course-action.review { background: #e5f2ec; color: var(--green); }
 .course-action.review:hover { background: #d8ebe2; }
+.lesson-card.unavailable .lesson-card-icon, .lesson-card.unavailable .card-progress { opacity: .55; }
+.lesson-card.unavailable .lesson-state { background: #f3eee2; color: #7d6735; }
+.course-action:disabled { justify-content: center; background: #e5e9e7; color: #65706b; cursor: not-allowed; }
+.course-action:disabled:hover { background: #e5e9e7; }
 
 .player-layout {
   display: block;

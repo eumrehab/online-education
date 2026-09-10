@@ -1,24 +1,22 @@
 const CONFIG = {
-  demoMode: true,
   passingScore: 80,
   // Google Apps Script를 배포한 뒤 발급된 /exec 주소를 입력하세요.
   resultsEndpoint: "https://script.google.com/macros/s/AKfycbxeczRU1B-ZZwZMAaHZcv_kxbiDyHs2nPzUXnnRmZ1Ism4JtyQJqb9Iqhr02gGOgoBOGg/exec",
-  admin: { id: "admin", password: "admin" },
-  // 실제 서버 연동 전 임시 수강생입니다.
-  students: [{ studentId: "2026001", name: "홍길동", birthDate: "1990-01-01" }],
   lessons: [
-    ["복지용구 제도의 이해", "복지용구 급여제도와 상담사의 역할을 알아봅니다."],
-    ["노인장기요양보험 기초", "장기요양보험의 구조와 대상자를 이해합니다."],
-    ["복지용구 품목 안내", "주요 급여 품목의 특징과 용도를 살펴봅니다."],
-    ["대상자 욕구 파악", "상담 과정에서 필요한 욕구 파악 방법을 배웁니다."],
-    ["안전한 제품 사용법", "제품별 안전 수칙과 사용 지도 방법을 익힙니다."],
-    ["상담 실무와 기록", "효과적인 상담 진행과 기록 원칙을 확인합니다."],
-    ["개인정보 보호", "수강생과 대상자의 개인정보 보호 기준을 배웁니다."],
-    ["현장 사례 및 종합정리", "실제 사례를 통해 전체 교육 내용을 정리합니다."]
+    ["건강과 인체의 이해 및 노인 신체, 인지, 정신 특성", "노인의 건강과 인체 특성을 이해합니다."],
+    ["복지용구 제도 개요 및 노인장기요양보험", "복지용구 제도와 노인장기요양보험의 기본 구조를 알아봅니다."],
+    ["복지용구의 이해와 활용(이동,이승)", "이동과 이승에 필요한 복지용구의 활용법을 익힙니다."],
+    ["복지용구의 이해와 활용(기거,입욕 배설)", "기거, 입욕 및 배설 관련 복지용구를 살펴봅니다."],
+    ["복지용구사업소 설립계획 및 운영", "복지용구사업소의 설립 준비와 운영 원칙을 배웁니다."],
+    ["복지용구 소독 및 관리", "복지용구의 올바른 소독과 관리 방법을 익힙니다."],
+    ["복지용구 이해와 활동(일상생활훈련)", "일상생활훈련에 활용되는 복지용구를 이해합니다."],
+    ["복지용구 안전과 환경관리(주택개조)", "안전한 생활환경 조성과 주택개조의 기초를 배웁니다."]
   ].map((item, i) => ({
     id: i + 1, title: item[0], description: item[1],
-    // 임시 공개 샘플 영상입니다. 실제 영상 주소로 교체하세요.
-    src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+    // 아직 전달되지 않은 강의에는 임시 공개 샘플 영상을 표시합니다.
+    src: i === 0 ? "./videos/lesson-01.mp4"
+      : i === 3 ? "./videos/lesson-04.mp4"
+      : "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
   })),
   questions: [
     { text: "복지용구 상담 시 가장 먼저 확인해야 할 사항으로 적절한 것은?", options: ["대상자의 상태와 생활환경", "제품의 색상", "광고 문구", "판매 순위"], correctAnswer: 0 },
@@ -30,7 +28,7 @@ const CONFIG = {
 };
 
 const $ = (id) => document.getElementById(id);
-const views = ["loginView", "adminLoginView", "classroomView", "lessonView", "examView", "completeView", "adminView"];
+const views = ["loginView", "classroomView", "lessonView", "examView", "completeView"];
 let session = JSON.parse(localStorage.getItem("edu-session") || "null");
 let currentLesson = 0;
 let lastVideoTime = 0;
@@ -38,9 +36,45 @@ let internalSeek = false;
 let saveTimer = null;
 let reviewMode = false;
 let cloudSyncTimer = null;
+let examTimerInterval = null;
+let lessonSettings = getSavedLessonSettings();
+
+function defaultLessonSettings() {
+  return CONFIG.lessons.map(lesson => ({ lessonId: lesson.id, isPublic: true, releaseDate: "" }));
+}
+function getSavedLessonSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("edu-lesson-settings") || "null");
+    if (!Array.isArray(saved)) return defaultLessonSettings();
+    return CONFIG.lessons.map(lesson => {
+      const item = saved.find(value => Number(value.lessonId) === lesson.id);
+      return { lessonId: lesson.id, isPublic: item?.isPublic !== false, releaseDate: item?.releaseDate || "" };
+    });
+  } catch (_) { return defaultLessonSettings(); }
+}
+function saveLessonSettings(settings) {
+  lessonSettings = settings;
+  localStorage.setItem("edu-lesson-settings", JSON.stringify(settings));
+}
+function isLessonAvailable(index) {
+  const setting = lessonSettings[index] || { isPublic: true, releaseDate: "" };
+  if (setting.isPublic) return true;
+  if (!setting.releaseDate) return false;
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return setting.releaseDate <= localToday;
+}
+function releaseLabel(index) {
+  const date = lessonSettings[index]?.releaseDate;
+  if (!date) return "공개 준비 중";
+  const [, month, day] = date.split("-");
+  return `${Number(month)}월 ${Number(day)}일 공개`;
+}
 
 function progressKey() { return `edu-progress-${session?.studentId || "guest"}`; }
 function resultKey() { return `edu-result-${session?.studentId || "guest"}`; }
+function examStartKey() { return `edu-exam-start-${session?.studentId || "guest"}`; }
+function examDraftKey() { return `edu-exam-draft-${session?.studentId || "guest"}`; }
 function getProgress() {
   return JSON.parse(localStorage.getItem(progressKey()) || JSON.stringify(CONFIG.lessons.map(() => ({ watchedUntil: 0, duration: 0, completed: false }))));
 }
@@ -53,6 +87,7 @@ function buildResultPayload(eventType) {
     studentId: session.studentId,
     name: session.name,
     birthDate: session.birthDate || "",
+    authToken: session.authToken || "",
     lessonProgress: progress.map(percent),
     overallProgress: progress.every(p => p.completed) ? 100 : overall(progress),
     completedLessons: progress.filter(p => p.completed).length,
@@ -64,7 +99,15 @@ function buildResultPayload(eventType) {
   };
 }
 async function syncToGoogleDrive(eventType) {
-  if (!CONFIG.resultsEndpoint || !session || session.role === "admin") return;
+  if (!CONFIG.resultsEndpoint || !session) return;
+  if (session.authExpiresAt && Date.now() >= session.authExpiresAt) {
+    alert("로그인 시간이 만료되었습니다. 진도 저장을 위해 다시 로그인해 주세요.");
+    $("lessonVideo").pause();
+    localStorage.removeItem("edu-session");
+    session = null;
+    showView("loginView");
+    return;
+  }
   const body = new URLSearchParams({ payload: JSON.stringify(buildResultPayload(eventType)) });
   try {
     await fetch(CONFIG.resultsEndpoint, { method: "POST", mode: "no-cors", body });
@@ -82,7 +125,7 @@ function scheduleCloudSync(eventType = "progress") {
 }
 function showView(id) {
   views.forEach(v => $(v).classList.toggle("hidden", v !== id));
-  $("userArea").classList.toggle("hidden", id === "loginView" || id === "adminLoginView");
+  $("userArea").classList.toggle("hidden", id === "loginView");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 function percent(item) {
@@ -102,12 +145,15 @@ function renderLessonList() {
   const progress = getProgress();
   $("lessonList").innerHTML = CONFIG.lessons.map((lesson, i) => {
     const p = percent(progress[i]);
-    const action = p === 100 ? "복습하기" : "수강하기";
-    return `<article class="lesson-card ${i === currentLesson ? "active" : ""} ${p === 100 ? "complete" : ""}"><div class="lesson-card-top"><span class="folder-tab">${i + 1}강</span><span class="lesson-state">${p === 100 ? "수강 완료" : p > 0 ? "수강 중" : "미수강"}</span></div><div class="lesson-card-body"><div class="lesson-card-icon" aria-hidden="true"><span></span></div><h3>${lesson.title}</h3><div class="card-progress-row"><span>수강률</span><strong>${p}%</strong></div><div class="card-progress"><i style="width:${p}%"></i></div><button class="course-action ${p === 100 ? "review" : ""}" data-index="${i}" type="button">${action}<span aria-hidden="true">→</span></button></div></article>`;
+    const available = isLessonAvailable(i);
+    const action = available ? (p === 100 ? "복습하기" : "수강하기") : releaseLabel(i);
+    const state = available ? (p === 100 ? "수강 완료" : p > 0 ? "수강 중" : "미수강") : "공개 예정";
+    return `<article class="lesson-card ${i === currentLesson ? "active" : ""} ${p === 100 ? "complete" : ""} ${available ? "" : "unavailable"}"><div class="lesson-card-top"><span class="folder-tab">${i + 1}강</span><span class="lesson-state">${state}</span></div><div class="lesson-card-body"><div class="lesson-card-icon" aria-hidden="true"><span></span></div><h3>${lesson.title}</h3><div class="card-progress-row"><span>수강률</span><strong>${p}%</strong></div><div class="card-progress"><i style="width:${p}%"></i></div><button class="course-action ${p === 100 && available ? "review" : ""}" data-index="${i}" type="button" ${available ? "" : "disabled"}>${action}${available ? '<span aria-hidden="true">→</span>' : ""}</button></div></article>`;
   }).join("");
   document.querySelectorAll(".course-action").forEach(btn => btn.addEventListener("click", () => openLesson(Number(btn.dataset.index))));
 }
 function openLesson(index) {
+  if (!isLessonAvailable(index)) return;
   loadLesson(index, getProgress()[index].completed);
   $("lessonModeBadge").textContent = reviewMode ? "복습 중 · 진도 미반영" : "학습 중";
   $("lessonModeBadge").classList.toggle("review", reviewMode);
@@ -136,8 +182,8 @@ function loadLesson(index, isReview = false) {
   $("lessonNumber").textContent = `${index + 1}강`;
   $("lessonTitle").textContent = lesson.title;
   $("lessonDescription").textContent = lesson.description;
-  $("prevLesson").disabled = index === 0;
-  $("nextLesson").disabled = index === CONFIG.lessons.length - 1;
+  $("prevLesson").disabled = index === 0 || !isLessonAvailable(index - 1);
+  $("nextLesson").disabled = index === CONFIG.lessons.length - 1 || !isLessonAvailable(index + 1);
   video.src = lesson.src || "";
   $("videoEmpty").classList.toggle("hidden", Boolean(lesson.src));
   video.classList.toggle("hidden", !lesson.src);
@@ -196,77 +242,133 @@ function setupVideoGuards() {
   document.addEventListener("visibilitychange", () => { if (document.hidden) video.pause(); });
 }
 function renderExam() {
-  $("examForm").innerHTML = CONFIG.questions.map((q, qi) => `<section class="question-card"><h2><span class="step-label">문항 ${qi + 1}</span><br>${q.text}</h2>${q.options.map((o, oi) => `<label class="option"><input type="radio" name="q${qi}" value="${oi}" required><span>${o}</span></label>`).join("")}</section>`).join("") + `<div class="submit-bar"><button class="primary-button" type="submit">답안 제출하기</button></div>`;
+  const draft = JSON.parse(localStorage.getItem(examDraftKey()) || "[]");
+  $("examForm").innerHTML = CONFIG.questions.map((q, qi) => `<section class="question-card"><h2><span class="step-label">문항 ${qi + 1}</span><br>${q.text}</h2>${q.options.map((o, oi) => `<label class="option"><input type="radio" name="q${qi}" value="${oi}" ${draft[qi] === oi ? "checked" : ""} required><span>${o}</span></label>`).join("")}</section>`).join("") + `<div class="submit-bar"><button class="primary-button" type="submit">답안 제출하기</button></div>`;
+  $("examForm").addEventListener("change", () => {
+    const form = new FormData($("examForm"));
+    localStorage.setItem(examDraftKey(), JSON.stringify(CONFIG.questions.map((_, i) => {
+      const value = form.get(`q${i}`);
+      return value === null ? null : Number(value);
+    })));
+  });
+}
+function startExamCountdown() {
+  clearInterval(examTimerInterval);
+  const update = () => {
+    const startedAt = Number(localStorage.getItem(examStartKey()));
+    const remaining = Math.max(0, 60 * 60 * 1000 - (Date.now() - startedAt));
+    const totalSeconds = Math.ceil(remaining / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    $("examTimer").textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    $("examTimer").classList.toggle("urgent", remaining <= 5 * 60 * 1000);
+    if (remaining <= 0) submitExam(true);
+  };
+  update();
+  examTimerInterval = setInterval(update, 1000);
+}
+function submitExam(autoSubmitted = false) {
+  if (!session || localStorage.getItem(resultKey())) return;
+  if (!getProgress().every(p => p.completed)) { enterClassroom(); return; }
+  clearInterval(examTimerInterval);
+  const form = new FormData($("examForm"));
+  const answers = CONFIG.questions.map((_, i) => {
+    const value = form.get(`q${i}`);
+    return value === null ? -1 : Number(value);
+  });
+  const correctCount = CONFIG.questions.filter((question, i) => question.correctAnswer === answers[i]).length;
+  const score = Math.round(correctCount / CONFIG.questions.length * 100);
+  const result = { studentId: session.studentId, name: session.name, answers, score, passStatus: score >= CONFIG.passingScore ? "완료" : "미완료", submittedAt: new Date().toISOString(), status: "제출 완료", autoSubmitted };
+  localStorage.setItem(resultKey(), JSON.stringify(result));
+  localStorage.removeItem(examDraftKey());
+  syncToGoogleDrive("exam_submit");
+  $("submissionInfo").textContent = `${autoSubmitted ? "제한 시간 종료 · 자동 제출 · " : ""}제출 일시 · ${new Date(result.submittedAt).toLocaleString("ko-KR")}`;
+  showView("completeView");
 }
 function enterClassroom() {
   $("userName").textContent = `${session.name} 수강생`;
   showView("classroomView");
   loadLesson(currentLesson);
 }
-function overallForAdmin(progress) {
-  const known = progress.every(p => p.duration > 0);
-  if (known) {
-    const watched = progress.reduce((sum, p) => sum + (p.completed ? p.duration : p.watchedUntil), 0);
-    const total = progress.reduce((sum, p) => sum + p.duration, 0);
-    return total ? Math.floor(watched / total * 100) : 0;
-  }
-  return Math.floor(progress.reduce((sum, p) => sum + percent(p), 0) / CONFIG.lessons.length);
-}
-function renderAdmin() {
-  const rows = CONFIG.students.map(student => {
-    const empty = CONFIG.lessons.map(() => ({ watchedUntil: 0, duration: 0, completed: false }));
-    const progress = JSON.parse(localStorage.getItem(`edu-progress-${student.studentId}`) || JSON.stringify(empty));
-    const result = JSON.parse(localStorage.getItem(`edu-result-${student.studentId}`) || "null");
-    const done = progress.filter(p => p.completed).length;
-    return { ...student, done, totalPercent: done === 8 ? 100 : overallForAdmin(progress), result };
-  });
-  $("adminStudentCount").textContent = `${rows.length}명`;
-  $("adminCompleteCount").textContent = `${rows.filter(row => row.done === 8).length}명`;
-  $("adminSubmitCount").textContent = `${rows.filter(row => row.result).length}명`;
-  $("adminTableBody").innerHTML = rows.map(row => `<tr><td>${row.studentId}</td><td><strong>${row.name}</strong></td><td>${row.totalPercent}%</td><td>${row.done} / 8강</td><td><span class="status-pill ${row.result ? "done" : ""}">${row.result ? "제출 완료" : "미제출"}</span></td><td>${row.result?.score ?? "-"}${row.result ? "점" : ""}</td><td><span class="status-pill ${row.result?.passStatus === "완료" ? "done" : ""}">${row.result?.passStatus || "-"}</span></td><td>${row.result ? new Date(row.result.submittedAt).toLocaleString("ko-KR") : "-"}</td></tr>`).join("");
-}
-function enterAdmin() {
-  $("lessonVideo").pause();
-  $("userName").textContent = "관리자";
-  renderAdmin();
-  showView("adminView");
+function loadCloudLessonSettings() {
+  if (!CONFIG.resultsEndpoint) return;
+  const callbackName = `applyLessonSettings_${Date.now()}`;
+  const script = document.createElement("script");
+  window[callbackName] = data => {
+    if (data?.ok && Array.isArray(data.settings) && data.settings.length) {
+      saveLessonSettings(data.settings);
+      if (!$("classroomView").classList.contains("hidden")) renderLessonList();
+    }
+    delete window[callbackName]; script.remove();
+  };
+  script.onerror = () => { delete window[callbackName]; script.remove(); };
+  script.src = `${CONFIG.resultsEndpoint}?action=settings&callback=${callbackName}&t=${Date.now()}`;
+  document.head.appendChild(script);
 }
 function normalizeBirthDate(value) {
   const digits = String(value || "").replace(/[^0-9]/g, "");
   return digits.length === 8 ? digits.slice(2) : digits;
 }
 
-$("loginForm").addEventListener("submit", (e) => {
+function authenticateStudent(values) {
+  return new Promise(resolve => {
+    const nonce = `login_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const frame = document.createElement("iframe");
+    const form = document.createElement("form");
+    const input = document.createElement("input");
+    const frameName = `auth_${Date.now()}`;
+    let finished = false;
+    const cleanup = result => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      window.removeEventListener("message", receive);
+      form.remove();
+      setTimeout(() => frame.remove(), 100);
+      resolve(result);
+    };
+    const receive = event => {
+      const data = event.data;
+      if (event.source !== frame.contentWindow || !data || data.source !== "welfare-course-login" || data.nonce !== nonce) return;
+      cleanup(data);
+    };
+    const timer = setTimeout(() => cleanup({ ok: false, message: "로그인 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." }), 15000);
+    window.addEventListener("message", receive);
+    frame.name = frameName;
+    frame.hidden = true;
+    form.method = "POST";
+    form.action = CONFIG.resultsEndpoint;
+    form.target = frameName;
+    form.hidden = true;
+    input.type = "hidden";
+    input.name = "payload";
+    input.value = JSON.stringify({ eventType: "login", nonce, ...values });
+    form.appendChild(input);
+    document.body.append(frame, form);
+    form.submit();
+  });
+}
+
+$("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const values = { studentId: $("studentId").value.trim(), name: $("studentName").value.trim(), birthDate: $("birthDate").value };
-  const found = CONFIG.students.find(s => s.studentId === values.studentId && s.name === values.name && normalizeBirthDate(s.birthDate) === normalizeBirthDate(values.birthDate));
-  if (!found) { $("loginError").textContent = "등록된 수강생 정보와 일치하지 않습니다."; return; }
-  session = { studentId: found.studentId, name: found.name, birthDate: normalizeBirthDate(found.birthDate), loginAt: new Date().toISOString() };
+  const submitButton = e.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  $("loginError").textContent = "등록 정보를 확인하고 있습니다…";
+  const result = await authenticateStudent(values);
+  submitButton.disabled = false;
+  if (!result.ok) { $("loginError").textContent = result.message || "등록된 수강생 정보와 일치하지 않습니다."; return; }
+  session = { studentId: result.studentId, name: result.name, birthDate: result.birthDate, authToken: result.authToken, authExpiresAt: result.authExpiresAt || null, loginAt: new Date().toISOString() };
+  if (result.hasProgressRecord === false) localStorage.removeItem(progressKey());
+  if (result.hasExamRecord === false) {
+    localStorage.removeItem(resultKey());
+    localStorage.removeItem(examStartKey());
+    localStorage.removeItem(examDraftKey());
+  }
   localStorage.setItem("edu-session", JSON.stringify(session));
   $("loginError").textContent = "";
   enterClassroom();
   syncToGoogleDrive("login");
-});
-$("openAdminLogin").addEventListener("click", () => {
-  $("loginError").textContent = "";
-  showView("adminLoginView");
-});
-$("backToStudentLogin").addEventListener("click", () => {
-  $("adminLoginError").textContent = "";
-  showView("loginView");
-});
-$("adminLoginForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const id = $("adminId").value.trim();
-  const password = $("adminPassword").value;
-  if (id !== CONFIG.admin.id || password !== CONFIG.admin.password) {
-    $("adminLoginError").textContent = "아이디 또는 비밀번호가 일치하지 않습니다.";
-    return;
-  }
-  session = { studentId: "admin", name: "관리자", role: "admin", loginAt: new Date().toISOString() };
-  localStorage.setItem("edu-session", JSON.stringify(session));
-  $("adminLoginError").textContent = "";
-  enterAdmin();
 });
 $("logoutBtn").addEventListener("click", () => { $("lessonVideo").pause(); localStorage.removeItem("edu-session"); session = null; showView("loginView"); });
 $("prevLesson").addEventListener("click", () => loadLesson(Math.max(0, currentLesson - 1)));
@@ -277,24 +379,20 @@ $("returnToClassroom").addEventListener("click", () => {
 });
 $("startExamBtn").addEventListener("click", () => {
   if (!getProgress().every(p => p.completed)) return;
-  $("lessonVideo").pause(); renderExam(); showView("examView");
+  if (localStorage.getItem(resultKey())) { alert("이미 제출된 시험입니다."); return; }
+  $("lessonVideo").pause();
+  if (!localStorage.getItem(examStartKey())) localStorage.setItem(examStartKey(), String(Date.now()));
+  renderExam(); showView("examView"); startExamCountdown();
 });
 $("examForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  if (!getProgress().every(p => p.completed)) { enterClassroom(); return; }
-  if (localStorage.getItem(resultKey())) { alert("이미 제출된 시험입니다."); return; }
-  const form = new FormData(e.target);
-  const answers = CONFIG.questions.map((_, i) => Number(form.get(`q${i}`)));
-  const correctCount = CONFIG.questions.filter((question, i) => question.correctAnswer === answers[i]).length;
-  const score = Math.round(correctCount / CONFIG.questions.length * 100);
-  const result = { studentId: session.studentId, name: session.name, answers, score, passStatus: score >= CONFIG.passingScore ? "완료" : "미완료", submittedAt: new Date().toISOString(), status: "제출 완료" };
-  localStorage.setItem(resultKey(), JSON.stringify(result));
-  syncToGoogleDrive("exam_submit");
-  $("submissionInfo").textContent = `제출 일시 · ${new Date(result.submittedAt).toLocaleString("ko-KR")}`;
-  showView("completeView");
+  submitExam(false);
 });
 $("backToClassroom").addEventListener("click", enterClassroom);
-$("refreshAdmin").addEventListener("click", renderAdmin);
-
 setupVideoGuards();
-if (session?.role === "admin") enterAdmin(); else if (session) enterClassroom(); else showView("loginView");
+loadCloudLessonSettings();
+if (session && (!session.authToken || (session.authExpiresAt && Date.now() >= session.authExpiresAt))) {
+  localStorage.removeItem("edu-session");
+  session = null;
+}
+if (session) enterClassroom(); else showView("loginView");
