@@ -15,6 +15,7 @@ const CONFIG = {
     id: i + 1, title: item[0], description: item[1],
     // 아직 전달되지 않은 강의에는 임시 공개 샘플 영상을 표시합니다.
     src: i === 0 ? "./videos/lesson-01.mp4"
+      : i === 1 ? "./videos/lesson-02.mp4"
       : i === 3 ? "./videos/lesson-04.mp4"
       : "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
   })),

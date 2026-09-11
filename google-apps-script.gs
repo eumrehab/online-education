@@ -55,7 +55,7 @@ function authenticateStudent(book, data) {
     const row = rows.find(value => String(value[0]).trim() === String(data.studentId).trim()
       && String(value[1]).trim() === String(data.name).trim()
       && normalizeBirthDate(value[2]) === inputBirth
-      && String(value[3] || "사용").trim() !== "중지");
+      && String(value[3] || "").replace(/\s/g, "") === "사용");
     if (!row) {
       cache.put(attemptKey, String(attempts + 1), 600);
       return loginResponse({ ok: false, nonce, message: "등록된 수강생 정보와 일치하지 않습니다." });
