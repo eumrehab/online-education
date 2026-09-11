@@ -17,6 +17,8 @@ const CONFIG = {
     src: i === 0 ? "./videos/lesson-01.mp4"
       : i === 1 ? "./videos/lesson-02.mp4"
       : i === 3 ? "./videos/lesson-04.mp4"
+      : i === 5 ? "./videos/lesson-06.mp4"
+      : i === 6 ? "./videos/lesson-07.mp4"
       : "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
   })),
   questions: [
