@@ -22,6 +22,8 @@ function doPost(e) {
     const data = JSON.parse(e.parameter.payload || "{}");
     const book = SpreadsheetApp.openById(SPREADSHEET_ID);
     if (data.eventType === "login") return authenticateStudent(book, data);
+    if (data.eventType === "admin_login") return authenticateAdmin(book, data);
+    if (data.eventType === "admin_progress") return loadAdminProgress(book, data);
     const identity = verifySession(data.authToken);
     if (!identity) throw new Error("로그인 유효시간이 만료되었습니다. 다시 로그인해 주세요.");
     data.studentId = identity.studentId;
@@ -117,9 +119,154 @@ function normalizeBirthDate(value) {
 
 function loginResponse(data) {
   data.source = "welfare-course-login";
+  return secureHtmlResponse(data);
+}
+
+function adminResponse(data) {
+  data.source = "welfare-course-admin";
+  return secureHtmlResponse(data);
+}
+
+function secureHtmlResponse(data) {
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
   return HtmlService.createHtmlOutput("<script>window.top.postMessage(" + json + ", '*');</script>")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function hashAdminPassword(password, salt) {
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(salt) + ":" + String(password),
+    Utilities.Charset.UTF_8
+  );
+  return digest.map(value => ((value + 256) % 256).toString(16).padStart(2, "0")).join("");
+}
+
+function setupAdminAccountsSheet() {
+  const book = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = findSheetByNormalizedName(book, "관리자계정");
+  if (!sheet) sheet = book.insertSheet("관리자 계정");
+  sheet.getRange(1, 1, 1, 5).setValues([["관리자 아이디", "관리자명", "비밀번호 해시", "솔트", "상태"]]);
+  sheet.getRange("A:E").setNumberFormat("@");
+  sheet.setFrozenRows(1);
+  sheet.autoResizeColumns(1, 5);
+}
+
+function registerAdminAccount(adminId, password, name) {
+  if (!adminId || !password || !name) throw new Error("관리자 아이디, 비밀번호, 관리자명을 모두 입력해 주세요.");
+  const book = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = findSheetByNormalizedName(book, "관리자계정");
+  if (!sheet) {
+    setupAdminAccountsSheet();
+    sheet = findSheetByNormalizedName(book, "관리자계정");
+  }
+  const ids = sheet.getLastRow() < 2 ? [] : sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getDisplayValues().flat();
+  const found = ids.indexOf(String(adminId).trim());
+  const row = found === -1 ? sheet.getLastRow() + 1 : found + 2;
+  const salt = Utilities.getUuid();
+  sheet.getRange(row, 1, 1, 5).setValues([[
+    String(adminId).trim(), String(name).trim(), hashAdminPassword(password, salt), salt, "사용"
+  ]]);
+}
+
+/**
+ * Apps Script의 '스크립트 속성'에 아래 3개 값을 등록한 뒤 한 번 실행합니다.
+ * ADMIN_SETUP_ID / ADMIN_SETUP_PASSWORD / ADMIN_SETUP_NAME
+ * 계정 생성 후 비밀번호가 남지 않도록 해당 속성은 자동으로 삭제됩니다.
+ */
+function createAdminAccountFromScriptProperties() {
+  const properties = PropertiesService.getScriptProperties();
+  const adminId = String(properties.getProperty("ADMIN_SETUP_ID") || "").trim();
+  const password = String(properties.getProperty("ADMIN_SETUP_PASSWORD") || "");
+  const name = String(properties.getProperty("ADMIN_SETUP_NAME") || "").trim();
+
+  if (!adminId || !password || !name) {
+    throw new Error("스크립트 속성에 ADMIN_SETUP_ID, ADMIN_SETUP_PASSWORD, ADMIN_SETUP_NAME을 모두 등록해 주세요.");
+  }
+
+  registerAdminAccount(adminId, password, name);
+  properties.deleteProperty("ADMIN_SETUP_ID");
+  properties.deleteProperty("ADMIN_SETUP_PASSWORD");
+  properties.deleteProperty("ADMIN_SETUP_NAME");
+  return { ok: true, adminId };
+}
+
+function authenticateAdmin(book, data) {
+  const nonce = String(data.nonce || "");
+  try {
+    const cache = CacheService.getScriptCache();
+    const attemptKey = loginAttemptKey("admin:" + String(data.adminId || ""));
+    const attempts = Number(cache.get(attemptKey) || 0);
+    if (attempts >= 10) throw new Error("로그인 시도가 너무 많습니다. 10분 후 다시 시도해 주세요.");
+    const sheet = findSheetByNormalizedName(book, "관리자계정");
+    if (!sheet || sheet.getLastRow() < 2) throw new Error("등록된 관리자 계정이 없습니다.");
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getDisplayValues();
+    const adminId = String(data.adminId || "").trim();
+    const row = rows.find(value => String(value[0]).trim() === adminId
+      && String(value[4] || "").replace(/\s/g, "") === "사용"
+      && hashAdminPassword(data.password || "", value[3]) === String(value[2]).trim());
+    if (!row) {
+      cache.put(attemptKey, String(attempts + 1), 600);
+      return adminResponse({ ok: false, nonce, message: "관리자 정보가 일치하지 않습니다." });
+    }
+    const token = Utilities.getUuid() + Utilities.getUuid();
+    const identity = { adminId: String(row[0]).trim(), name: String(row[1]).trim() };
+    cache.remove(attemptKey);
+    cache.put("admin_session_" + token, JSON.stringify(identity), 21600);
+    return adminResponse({ ok: true, nonce, authToken: token, authExpiresAt: Date.now() + 21600000, ...identity });
+  } catch (error) {
+    return adminResponse({ ok: false, nonce, message: error.message });
+  }
+}
+
+function verifyAdminSession(token) {
+  if (!token) return null;
+  const saved = CacheService.getScriptCache().get("admin_session_" + String(token));
+  if (!saved) return null;
+  try { return JSON.parse(saved); } catch (_) { return null; }
+}
+
+function loadAdminProgress(book, data) {
+  const nonce = String(data.nonce || "");
+  try {
+    const admin = verifyAdminSession(data.authToken);
+    if (!admin) return adminResponse({ ok: false, nonce, expired: true, message: "관리자 로그인 시간이 만료되었습니다." });
+    const rosterSheet = findSheetByNormalizedName(book, "수강생명단");
+    const progressSheet = book.getSheetByName("강의별 진도");
+    const examSheet = book.getSheetByName("시험 결과");
+    const progressMap = {};
+    if (progressSheet && progressSheet.getLastRow() >= 2) {
+      progressSheet.getRange(2, 1, progressSheet.getLastRow() - 1, 12).getValues().forEach(row => {
+        const studentId = String(row[0]).trim();
+        const lessonProgress = row.slice(2, 10).map(value => Math.max(0, Math.min(100, Math.round(Number(value || 0) * 100))));
+        progressMap[studentId] = {
+          lessonProgress,
+          overallProgress: Math.max(0, Math.min(100, Math.round(Number(row[10] || 0) * 100))),
+          completedLessons: lessonProgress.filter(value => value >= 100).length,
+          lastAccessAt: row[11] instanceof Date ? Utilities.formatDate(row[11], Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm") : String(row[11] || "")
+        };
+      });
+    }
+    const examMap = {};
+    if (examSheet && examSheet.getLastRow() >= 2) {
+      examSheet.getRange(2, 1, examSheet.getLastRow() - 1, 11).getDisplayValues().forEach(row => {
+        examMap[String(row[0]).trim()] = row[2] === "제출 완료" ? (row[10] || "제출 완료") : "미제출";
+      });
+    }
+    const rosterRows = !rosterSheet || rosterSheet.getLastRow() < 2 ? [] : rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 4).getDisplayValues();
+    const rows = rosterRows.filter(row => String(row[3] || "").replace(/\s/g, "") === "사용").map(row => {
+      const studentId = String(row[0]).trim();
+      const progress = progressMap[studentId] || { lessonProgress: Array(8).fill(0), overallProgress: 0, completedLessons: 0, lastAccessAt: "" };
+      return { studentId, name: String(row[1]).trim(), examStatus: examMap[studentId] || "미제출", ...progress };
+    });
+    const totalStudents = rows.length;
+    const completedStudents = rows.filter(row => row.completedLessons === 8).length;
+    const examSubmitted = rows.filter(row => row.examStatus !== "미제출").length;
+    const averageProgress = totalStudents ? Math.round(rows.reduce((sum, row) => sum + row.overallProgress, 0) / totalStudents) : 0;
+    return adminResponse({ ok: true, nonce, rows, summary: { totalStudents, completedStudents, averageProgress, examSubmitted } });
+  } catch (error) {
+    return adminResponse({ ok: false, nonce, message: error.message });
+  }
 }
 
 function getOrCreateSettingsSheet(book) {

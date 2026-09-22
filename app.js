@@ -33,8 +33,9 @@ const CONFIG = {
 };
 
 const $ = (id) => document.getElementById(id);
-const views = ["loginView", "classroomView", "lessonView", "examView", "completeView"];
+const views = ["loginView", "adminLoginView", "adminDashboardView", "classroomView", "lessonView", "examView", "completeView"];
 let session = JSON.parse(localStorage.getItem("edu-session") || "null");
+let adminSession = JSON.parse(localStorage.getItem("edu-admin-session") || "null");
 let currentLesson = 0;
 let lastVideoTime = 0;
 let internalSeek = false;
@@ -130,7 +131,7 @@ function scheduleCloudSync(eventType = "progress") {
 }
 function showView(id) {
   views.forEach(v => $(v).classList.toggle("hidden", v !== id));
-  $("userArea").classList.toggle("hidden", id === "loginView");
+  $("userArea").classList.toggle("hidden", id === "loginView" || id === "adminLoginView");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 function percent(item) {
@@ -315,9 +316,9 @@ function normalizeBirthDate(value) {
   return digits.length === 8 ? digits.slice(2) : digits;
 }
 
-function authenticateStudent(values) {
+function postForSecureResponse(payload, expectedSource) {
   return new Promise(resolve => {
-    const nonce = `login_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const nonce = `request_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const frame = document.createElement("iframe");
     const form = document.createElement("form");
     const input = document.createElement("input");
@@ -339,7 +340,7 @@ function authenticateStudent(values) {
       const trustedGoogleOrigin = event.origin === "null"
         || event.origin === "https://script.google.com"
         || /^https:\/\/[^/]+-script\.googleusercontent\.com$/.test(event.origin);
-      if (!trustedGoogleOrigin || !data || data.source !== "welfare-course-login" || data.nonce !== nonce) return;
+      if (!trustedGoogleOrigin || !data || data.source !== expectedSource || data.nonce !== nonce) return;
       cleanup(data);
     };
     const timer = setTimeout(() => cleanup({ ok: false, message: "로그인 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." }), 30000);
@@ -352,11 +353,51 @@ function authenticateStudent(values) {
     form.hidden = true;
     input.type = "hidden";
     input.name = "payload";
-    input.value = JSON.stringify({ eventType: "login", nonce, ...values });
+    input.value = JSON.stringify({ nonce, ...payload });
     form.appendChild(input);
     document.body.append(frame, form);
     form.submit();
   });
+}
+function authenticateStudent(values) { return postForSecureResponse({ eventType: "login", ...values }, "welfare-course-login"); }
+function authenticateAdmin(values) { return postForSecureResponse({ eventType: "admin_login", ...values }, "welfare-course-admin"); }
+function fetchAdminProgress() {
+  if (!adminSession?.authToken) return Promise.resolve({ ok: false, message: "관리자 로그인이 필요합니다." });
+  return postForSecureResponse({ eventType: "admin_progress", authToken: adminSession.authToken }, "welfare-course-admin");
+}
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+}
+function renderAdminDashboard(data) {
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  $("adminTotalStudents").textContent = `${data.summary?.totalStudents || 0}명`;
+  $("adminCompletedStudents").textContent = `${data.summary?.completedStudents || 0}명`;
+  $("adminAverageProgress").textContent = `${data.summary?.averageProgress || 0}%`;
+  $("adminExamSubmitted").textContent = `${data.summary?.examSubmitted || 0}명`;
+  $("adminProgressRows").innerHTML = rows.length ? rows.map(row => {
+    const lessons = Array.from({ length: 8 }, (_, i) => Number(row.lessonProgress?.[i] || 0));
+    return `<tr><td>${escapeHtml(row.studentId)}</td><td>${escapeHtml(row.name)}</td><td class="${Number(row.overallProgress) >= 100 ? "progress-complete" : ""}">${Number(row.overallProgress) || 0}%</td><td>${Number(row.completedLessons) || 0}/8</td>${lessons.map(value => `<td class="${value >= 100 ? "progress-complete" : value === 0 ? "progress-none" : ""}">${value}%</td>`).join("")}<td>${escapeHtml(row.lastAccessAt || "-")}</td><td>${escapeHtml(row.examStatus || "미제출")}</td></tr>`;
+  }).join("") : '<tr><td class="admin-empty" colspan="14">등록된 수강생이 없습니다.</td></tr>';
+}
+async function loadAdminDashboard() {
+  $("adminDataMessage").textContent = "최신 진도 정보를 불러오고 있습니다…";
+  $("refreshAdminData").disabled = true;
+  const result = await fetchAdminProgress();
+  $("refreshAdminData").disabled = false;
+  if (!result.ok) {
+    $("adminDataMessage").textContent = result.message || "진도 정보를 불러오지 못했습니다.";
+    if (result.expired) {
+      localStorage.removeItem("edu-admin-session"); adminSession = null; showView("adminLoginView");
+    }
+    return;
+  }
+  renderAdminDashboard(result);
+  $("adminDataMessage").textContent = `최근 갱신 ${new Date().toLocaleString("ko-KR")}`;
+}
+function enterAdminDashboard() {
+  $("userName").textContent = `${adminSession.name} 관리자`;
+  showView("adminDashboardView");
+  loadAdminDashboard();
 }
 
 $("loginForm").addEventListener("submit", async (e) => {
@@ -380,7 +421,32 @@ $("loginForm").addEventListener("submit", async (e) => {
   enterClassroom();
   syncToGoogleDrive("login");
 });
-$("logoutBtn").addEventListener("click", () => { $("lessonVideo").pause(); localStorage.removeItem("edu-session"); session = null; showView("loginView"); });
+$("showAdminLogin").addEventListener("click", () => showView("adminLoginView"));
+$("backToStudentLogin").addEventListener("click", () => showView("loginView"));
+$("adminLoginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const submitButton = e.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  $("adminLoginError").textContent = "관리자 정보를 확인하고 있습니다…";
+  const result = await authenticateAdmin({ adminId: $("adminId").value.trim(), password: $("adminPassword").value });
+  submitButton.disabled = false;
+  if (!result.ok) { $("adminLoginError").textContent = result.message || "관리자 정보가 일치하지 않습니다."; return; }
+  adminSession = { adminId: result.adminId, name: result.name, authToken: result.authToken, authExpiresAt: result.authExpiresAt };
+  localStorage.setItem("edu-admin-session", JSON.stringify(adminSession));
+  $("adminPassword").value = "";
+  $("adminLoginError").textContent = "";
+  enterAdminDashboard();
+});
+$("refreshAdminData").addEventListener("click", loadAdminDashboard);
+$("logoutBtn").addEventListener("click", () => {
+  $("lessonVideo").pause();
+  if (!$("adminDashboardView").classList.contains("hidden") || adminSession) {
+    localStorage.removeItem("edu-admin-session"); adminSession = null;
+  } else {
+    localStorage.removeItem("edu-session"); session = null;
+  }
+  showView("loginView");
+});
 $("prevLesson").addEventListener("click", () => loadLesson(Math.max(0, currentLesson - 1)));
 $("nextLesson").addEventListener("click", () => loadLesson(Math.min(CONFIG.lessons.length - 1, currentLesson + 1)));
 $("returnToClassroom").addEventListener("click", () => {
@@ -405,4 +471,8 @@ if (session && (!session.authToken || (session.authExpiresAt && Date.now() >= se
   localStorage.removeItem("edu-session");
   session = null;
 }
-if (session) enterClassroom(); else showView("loginView");
+if (adminSession && (!adminSession.authToken || (adminSession.authExpiresAt && Date.now() >= adminSession.authExpiresAt))) {
+  localStorage.removeItem("edu-admin-session");
+  adminSession = null;
+}
+if (adminSession) enterAdminDashboard(); else if (session) enterClassroom(); else showView("loginView");
