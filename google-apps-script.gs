@@ -99,10 +99,10 @@ function setupStudentRosterSheet() {
   const book = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet = book.getSheetByName("수강생 명단");
   if (!sheet) sheet = book.insertSheet("수강생 명단");
-  sheet.getRange(1, 1, 1, 4).setValues([["학번", "이름", "생년월일", "상태"]]);
+  sheet.getRange(1, 1, 1, 5).setValues([["학번", "이름", "생년월일", "상태", "관리자 화면"]]);
   sheet.getRange("A:C").setNumberFormat("@");
   sheet.setFrozenRows(1);
-  sheet.autoResizeColumns(1, 4);
+  sheet.autoResizeColumns(1, 5);
 }
 
 function verifySession(token) {
@@ -253,8 +253,13 @@ function loadAdminProgress(book, data) {
         examMap[String(row[0]).trim()] = row[2] === "제출 완료" ? (row[10] || "제출 완료") : "미제출";
       });
     }
-    const rosterRows = !rosterSheet || rosterSheet.getLastRow() < 2 ? [] : rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 4).getDisplayValues();
-    const rows = rosterRows.filter(row => String(row[3] || "").replace(/\s/g, "") === "사용").map(row => {
+    const rosterRows = !rosterSheet || rosterSheet.getLastRow() < 2 ? [] : rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 5).getDisplayValues();
+    const hiddenValues = ["숨김", "비공개", "제외"];
+    const rows = rosterRows.filter(row => {
+      const status = String(row[3] || "").replace(/\s/g, "");
+      const adminVisibility = String(row[4] || "").replace(/\s/g, "");
+      return status === "사용" && !hiddenValues.includes(adminVisibility);
+    }).map(row => {
       const studentId = String(row[0]).trim();
       const progress = progressMap[studentId] || { lessonProgress: Array(8).fill(0), overallProgress: 0, completedLessons: 0, lastAccessAt: "" };
       return { studentId, name: String(row[1]).trim(), examStatus: examMap[studentId] || "미제출", ...progress };
