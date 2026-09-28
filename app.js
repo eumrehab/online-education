@@ -18,6 +18,7 @@ const CONFIG = {
       : i === 1 ? "./videos/lesson-02.mp4"
       : i === 2 ? "./videos/lesson-03.mp4"
       : i === 3 ? "./videos/lesson-04.mp4"
+      : i === 4 ? "./videos/lesson-05.mp4"
       : i === 5 ? "./videos/lesson-06.mp4"
       : i === 6 ? "./videos/lesson-07.mp4"
       : i === 7 ? "./videos/lesson-08.mp4"
