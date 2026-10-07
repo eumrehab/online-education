@@ -24,13 +24,7 @@ const CONFIG = {
       : i === 7 ? "./videos/lesson-08.mp4"
       : "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
   })),
-  questions: [
-    { text: "복지용구 상담 시 가장 먼저 확인해야 할 사항으로 적절한 것은?", options: ["대상자의 상태와 생활환경", "제품의 색상", "광고 문구", "판매 순위"], correctAnswer: 0 },
-    { text: "수강생 또는 대상자의 개인정보를 다룰 때 올바른 태도는?", options: ["업무 목적에 필요한 범위에서만 이용한다", "모든 직원에게 공유한다", "개인 기기에 저장한다", "별도 동의 없이 홍보에 활용한다"], correctAnswer: 0 },
-    { text: "제품 사용 안내에 반드시 포함해야 할 내용은?", options: ["안전 수칙과 주의사항", "판매자의 개인 의견", "경쟁 제품의 단점", "불필요한 전문용어"], correctAnswer: 0 },
-    { text: "상담 기록을 작성하는 주된 이유는?", options: ["상담 내용과 후속 조치를 정확히 관리하기 위해", "문서의 양을 늘리기 위해", "개인적인 평가를 남기기 위해", "광고에 사용하기 위해"], correctAnswer: 0 },
-    { text: "대상자에게 적절한 복지용구를 안내하는 기준은?", options: ["신체 상태와 사용 환경", "가장 비싼 제품", "상담사의 취향", "재고가 많은 제품"], correctAnswer: 0 }
-  ]
+  questions: window.EXAM_QUESTIONS || []
 };
 
 const $ = (id) => document.getElementById(id);
@@ -86,7 +80,7 @@ function getProgress() {
   return JSON.parse(localStorage.getItem(progressKey()) || JSON.stringify(CONFIG.lessons.map(() => ({ watchedUntil: 0, duration: 0, completed: false }))));
 }
 function saveProgress(data) { localStorage.setItem(progressKey(), JSON.stringify(data)); }
-function buildResultPayload(eventType) {
+function buildResultPayload(eventType, examResult = null) {
   const progress = getProgress();
   const result = JSON.parse(localStorage.getItem(resultKey()) || "null");
   return {
@@ -98,14 +92,12 @@ function buildResultPayload(eventType) {
     lessonProgress: progress.map(percent),
     overallProgress: progress.every(p => p.completed) ? 100 : overall(progress),
     completedLessons: progress.filter(p => p.completed).length,
-    answers: result?.answers || [],
-    score: result?.score ?? "",
-    passStatus: result?.passStatus || "",
-    submittedAt: result?.submittedAt || "",
+    answers: examResult?.answers || [],
+    submittedAt: examResult?.submittedAt || result?.submittedAt || "",
     lastAccessAt: new Date().toISOString()
   };
 }
-async function syncToGoogleDrive(eventType) {
+async function syncToGoogleDrive(eventType, examResult = null) {
   if (!CONFIG.resultsEndpoint || !session) return;
   if (session.authExpiresAt && Date.now() >= session.authExpiresAt) {
     alert("로그인 시간이 만료되었습니다. 진도 저장을 위해 다시 로그인해 주세요.");
@@ -115,7 +107,7 @@ async function syncToGoogleDrive(eventType) {
     showView("loginView");
     return;
   }
-  const body = new URLSearchParams({ payload: JSON.stringify(buildResultPayload(eventType)) });
+  const body = new URLSearchParams({ payload: JSON.stringify(buildResultPayload(eventType, examResult)) });
   try {
     await fetch(CONFIG.resultsEndpoint, { method: "POST", mode: "no-cors", body });
   } catch (error) {
@@ -250,7 +242,7 @@ function setupVideoGuards() {
 }
 function renderExam() {
   const draft = JSON.parse(localStorage.getItem(examDraftKey()) || "[]");
-  $("examForm").innerHTML = CONFIG.questions.map((q, qi) => `<section class="question-card"><h2><span class="step-label">문항 ${qi + 1}</span><br>${q.text}</h2>${q.options.map((o, oi) => `<label class="option"><input type="radio" name="q${qi}" value="${oi}" ${draft[qi] === oi ? "checked" : ""} required><span>${o}</span></label>`).join("")}</section>`).join("") + `<div class="submit-bar"><button class="primary-button" type="submit">답안 제출하기</button></div>`;
+  $("examForm").innerHTML = CONFIG.questions.map((q, qi) => `<section class="question-card" id="question-${qi}"><h2><span class="step-label">문항 ${q.number || qi + 1}</span><br>${q.text}</h2>${q.image ? `<img class="question-image" src="${q.image}" alt="${q.imageAlt || "시험 문항 참고 이미지"}">` : ""}${q.options.map((o, oi) => `<label class="option"><input type="radio" name="q${qi}" value="${oi}" ${draft[qi] === oi ? "checked" : ""} required><span>${o}</span></label>`).join("")}</section>`).join("") + `<div class="submit-bar"><p id="examSubmitGuide">모든 문항에 답해야 제출할 수 있습니다.</p><button class="primary-button" type="submit">답안 제출하기</button></div>`;
   $("examForm").addEventListener("change", () => {
     const form = new FormData($("examForm"));
     localStorage.setItem(examDraftKey(), JSON.stringify(CONFIG.questions.map((_, i) => {
@@ -283,12 +275,17 @@ function submitExam(autoSubmitted = false) {
     const value = form.get(`q${i}`);
     return value === null ? -1 : Number(value);
   });
-  const correctCount = CONFIG.questions.filter((question, i) => question.correctAnswer === answers[i]).length;
-  const score = Math.round(correctCount / CONFIG.questions.length * 100);
-  const result = { studentId: session.studentId, name: session.name, answers, score, passStatus: score >= CONFIG.passingScore ? "완료" : "미완료", submittedAt: new Date().toISOString(), status: "제출 완료", autoSubmitted };
-  localStorage.setItem(resultKey(), JSON.stringify(result));
+  const firstUnanswered = answers.findIndex(answer => answer < 0);
+  if (!autoSubmitted && firstUnanswered >= 0) {
+    const question = CONFIG.questions[firstUnanswered];
+    alert(`문항 ${question.number || firstUnanswered + 1}에 답해 주세요. 모든 문항을 풀어야 제출할 수 있습니다.`);
+    document.getElementById(`question-${firstUnanswered}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  const result = { answers, submittedAt: new Date().toISOString(), autoSubmitted };
+  localStorage.setItem(resultKey(), JSON.stringify({ submittedAt: result.submittedAt, status: "제출 완료" }));
   localStorage.removeItem(examDraftKey());
-  syncToGoogleDrive("exam_submit");
+  syncToGoogleDrive("exam_submit", result);
   $("submissionInfo").textContent = `${autoSubmitted ? "제한 시간 종료 · 자동 제출 · " : ""}제출 일시 · ${new Date(result.submittedAt).toLocaleString("ko-KR")}`;
   showView("completeView");
 }

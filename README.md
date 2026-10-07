@@ -65,7 +65,8 @@ python -m http.server 8080
 - 8개 강의 탭 및 이어보기
 - 일시정지·배속·앞으로 건너뛰기를 제외한 연속 재생 진도 기록
 - 8개 강의 완료 전 시험 응시 차단
-- 시험 답안 제출 및 완료 안내
+- 60분 제한 최종시험, 전 문항 필수 응답 및 완료 안내
+- 시험 점수와 합격 여부는 수강생에게 공개하지 않고 Google Sheet 관리자 결과표에만 저장
 - 기관 관리자 로그인 및 수강생 진도 현황 조회
 - 새로고침 후 로그인·진도·제출 상태 유지
 
@@ -75,4 +76,4 @@ python -m http.server 8080
 
 ## Google 결과표 연결
 
-Google Drive에 `복지용구 상담사 교육 결과 관리대장`이 생성되어 있습니다. `google-apps-script.gs` 내용을 Google Apps Script에 붙여 넣고 웹 앱으로 배포한 뒤, 발급된 `/exec` 주소를 `app.js`의 `resultsEndpoint`에 입력하면 진도와 시험 결과가 자동 저장됩니다.
+Google Drive에 `복지용구 상담사 교육 결과 관리대장`이 생성되어 있습니다. `google-apps-script.gs` 내용을 Google Apps Script에 붙여 넣고 새 버전으로 배포한 뒤, 발급된 `/exec` 주소를 `app.js`의 `resultsEndpoint`에 입력하면 진도와 시험 결과가 자동 저장됩니다. 시험 정답은 웹 코드에 포함하지 않으며 관리자 전용 `시험 정답` 탭에서 서버가 읽어 채점합니다.

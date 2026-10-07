@@ -249,8 +249,9 @@ function loadAdminProgress(book, data) {
     }
     const examMap = {};
     if (examSheet && examSheet.getLastRow() >= 2) {
-      examSheet.getRange(2, 1, examSheet.getLastRow() - 1, 11).getDisplayValues().forEach(row => {
-        examMap[String(row[0]).trim()] = row[2] === "제출 완료" ? (row[10] || "제출 완료") : "미제출";
+      const examColumnCount = Math.max(4, examSheet.getLastColumn());
+      examSheet.getRange(2, 1, examSheet.getLastRow() - 1, examColumnCount).getDisplayValues().forEach(row => {
+        examMap[String(row[0]).trim()] = row[2] === "제출 완료" ? (row[row.length - 1] || "제출 완료") : "미제출";
       });
     }
     const rosterRows = !rosterSheet || rosterSheet.getLastRow() < 2 ? [] : rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 5).getDisplayValues();
@@ -327,11 +328,6 @@ function upsertStudent(sheet, data) {
   ]]);
   sheet.getRange(row, 4).setNumberFormat("0%");
   sheet.getRange(row, 6).setNumberFormat("yyyy-mm-dd hh:mm:ss");
-  if (data.eventType === "exam_submit") {
-    sheet.getRange(row, 7, 1, 2).setValues([[
-      Number(data.score || 0), data.passStatus === "완료" ? "합격" : "불합격"
-    ]]);
-  }
 }
 
 function upsertProgress(sheet, data) {
@@ -346,11 +342,40 @@ function upsertProgress(sheet, data) {
 }
 
 function upsertExam(sheet, data) {
+  if (!sheet) throw new Error("시험 결과 시트를 찾을 수 없습니다.");
+  const book = sheet.getParent();
+  const answerKey = getExamAnswerKey(book);
+  const answers = Array.from({ length: answerKey.length }, (_, i) => {
+    const answer = Number(data.answers?.[i]);
+    return Number.isInteger(answer) && answer >= 0 && answer <= 3 ? answer : -1;
+  });
+  const correctCount = answers.filter((answer, i) => answer === answerKey[i].answerIndex).length;
+  const score = Math.round(correctCount / answerKey.length * 100);
+  const passStatus = score >= 80 ? "합격" : "불합격";
+  const headers = ["학번", "이름", "상태", "제출일시", ...answerKey.map(item => `${item.number}번 답`), "점수", "합격 여부"];
+  if (sheet.getMaxColumns() < headers.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+  }
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   const row = findStudentRow(sheet, data.studentId);
-  const answers = Array.from({ length: 5 }, (_, i) => data.answers?.[i] ?? "");
-  sheet.getRange(row, 1, 1, 11).setValues([[
+  sheet.getRange(row, 1, 1, headers.length).setValues([[
     String(data.studentId), data.name, "제출 완료", new Date(data.submittedAt), ...answers,
-    Number(data.score || 0), data.passStatus === "완료" ? "합격" : "불합격"
+    score, passStatus
   ]]);
   sheet.getRange(row, 4).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function getExamAnswerKey(book) {
+  const sheet = findSheetByNormalizedName(book, "시험정답");
+  if (!sheet || sheet.getLastRow() < 2) throw new Error("시험 정답표가 등록되지 않았습니다.");
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getDisplayValues()
+    .filter(row => String(row[0]).trim() !== "");
+  const answerKey = rows.map(row => ({
+    number: Number(row[0]),
+    answerIndex: Number(row[1]) - 1
+  }));
+  if (!answerKey.length || answerKey.some(item => !Number.isInteger(item.number) || item.answerIndex < 0 || item.answerIndex > 3)) {
+    throw new Error("시험 정답표의 문항 번호 또는 정답 값(1~4)을 확인해 주세요.");
+  }
+  return answerKey;
 }
