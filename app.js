@@ -80,6 +80,22 @@ function getProgress() {
   return JSON.parse(localStorage.getItem(progressKey()) || JSON.stringify(CONFIG.lessons.map(() => ({ watchedUntil: 0, duration: 0, completed: false }))));
 }
 function saveProgress(data) { localStorage.setItem(progressKey(), JSON.stringify(data)); }
+function applyCloudProgress(values) {
+  if (!Array.isArray(values) || values.length !== CONFIG.lessons.length) return;
+  const saved = getProgress();
+  const merged = CONFIG.lessons.map((_, index) => {
+    const cloudPercent = Math.max(0, Math.min(100, Math.round(Number(values[index]) || 0)));
+    const previous = saved[index] || { watchedUntil: 0, duration: 0, completed: false };
+    const duration = Number(previous.duration) || 0;
+    return {
+      watchedUntil: duration ? duration * cloudPercent / 100 : 0,
+      duration,
+      completed: cloudPercent >= 100,
+      ...(duration ? {} : { cloudPercent })
+    };
+  });
+  saveProgress(merged);
+}
 function buildResultPayload(eventType, examResult = null) {
   const progress = getProgress();
   const result = JSON.parse(localStorage.getItem(resultKey()) || "null");
@@ -129,6 +145,7 @@ function showView(id) {
 }
 function percent(item) {
   if (item.completed) return 100;
+  if (!item.duration && Number.isFinite(Number(item.cloudPercent))) return Math.min(99, Math.max(0, Math.floor(Number(item.cloudPercent))));
   return item.duration ? Math.min(99, Math.floor(item.watchedUntil / item.duration * 100)) : 0;
 }
 function overall(progress) {
@@ -206,7 +223,14 @@ function setupVideoGuards() {
   const video = $("lessonVideo");
   video.addEventListener("loadedmetadata", () => {
     const progress = getProgress();
-    progress[currentLesson].duration = video.duration;
+    const item = progress[currentLesson];
+    if (!item.duration && Number.isFinite(Number(item.cloudPercent))) {
+      const cloudPercent = Math.max(0, Math.min(100, Number(item.cloudPercent)));
+      item.watchedUntil = video.duration * cloudPercent / 100;
+      item.completed = cloudPercent >= 100;
+      delete item.cloudPercent;
+    }
+    item.duration = video.duration;
     saveProgress(progress);
     internalSeek = true;
     video.currentTime = reviewMode ? 0 : Math.min(progress[currentLesson].watchedUntil, Math.max(0, video.duration - .2));
@@ -408,7 +432,8 @@ $("loginForm").addEventListener("submit", async (e) => {
   submitButton.disabled = false;
   if (!result.ok) { $("loginError").textContent = result.message || "등록된 수강생 정보와 일치하지 않습니다."; return; }
   session = { studentId: result.studentId, name: result.name, birthDate: result.birthDate, authToken: result.authToken, authExpiresAt: result.authExpiresAt || null, loginAt: new Date().toISOString() };
-  if (result.hasProgressRecord === false) localStorage.removeItem(progressKey());
+  if (Array.isArray(result.lessonProgress)) applyCloudProgress(result.lessonProgress);
+  else if (result.hasProgressRecord === false) localStorage.removeItem(progressKey());
   if (result.hasExamRecord === false) {
     localStorage.removeItem(resultKey());
     localStorage.removeItem(examStartKey());

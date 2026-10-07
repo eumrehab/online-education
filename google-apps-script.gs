@@ -64,6 +64,7 @@ function authenticateStudent(book, data) {
     }
     const token = Utilities.getUuid() + Utilities.getUuid();
     const identity = { studentId: String(row[0]).trim(), name: String(row[1]).trim(), birthDate: inputBirth };
+    const lessonProgress = readStudentProgress(book.getSheetByName("강의별 진도"), identity.studentId);
     cache.remove(attemptKey);
     cache.put("session_" + token, JSON.stringify(identity), 21600);
     return loginResponse({
@@ -71,7 +72,8 @@ function authenticateStudent(book, data) {
       nonce,
       authToken: token,
       authExpiresAt: Date.now() + 21600000,
-      hasProgressRecord: hasStudentRecord(book.getSheetByName("강의별 진도"), identity.studentId),
+      hasProgressRecord: lessonProgress !== null,
+      lessonProgress: lessonProgress || Array(8).fill(0),
       hasExamRecord: hasStudentRecord(book.getSheetByName("시험 결과"), identity.studentId),
       ...identity
     });
@@ -88,6 +90,18 @@ function hasStudentRecord(sheet, studentId) {
   if (!sheet || sheet.getLastRow() < 2) return false;
   const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getDisplayValues().flat();
   return ids.includes(String(studentId));
+}
+
+function readStudentProgress(sheet, studentId) {
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
+  const row = rows.find(value => String(value[0]).trim() === String(studentId).trim());
+  if (!row) return null;
+  return row.slice(2, 10).map(value => {
+    const numeric = Number(value || 0);
+    const percent = numeric <= 1 ? numeric * 100 : numeric;
+    return Math.max(0, Math.min(100, Math.round(percent)));
+  });
 }
 
 function loginAttemptKey(studentId) {
