@@ -395,11 +395,10 @@ function renderAdminDashboard(data) {
   $("adminTotalStudents").textContent = `${data.summary?.totalStudents || 0}명`;
   $("adminCompletedStudents").textContent = `${data.summary?.completedStudents || 0}명`;
   $("adminAverageProgress").textContent = `${data.summary?.averageProgress || 0}%`;
-  $("adminExamSubmitted").textContent = `${data.summary?.examSubmitted || 0}명`;
   $("adminProgressRows").innerHTML = rows.length ? rows.map(row => {
     const lessons = Array.from({ length: 8 }, (_, i) => Number(row.lessonProgress?.[i] || 0));
-    return `<tr><td>${escapeHtml(row.studentId)}</td><td>${escapeHtml(row.name)}</td><td class="${Number(row.overallProgress) >= 100 ? "progress-complete" : ""}">${Number(row.overallProgress) || 0}%</td><td>${Number(row.completedLessons) || 0}/8</td>${lessons.map(value => `<td class="${value >= 100 ? "progress-complete" : value === 0 ? "progress-none" : ""}">${value}%</td>`).join("")}<td>${escapeHtml(row.lastAccessAt || "-")}</td><td>${escapeHtml(row.examStatus || "미제출")}</td></tr>`;
-  }).join("") : '<tr><td class="admin-empty" colspan="14">등록된 수강생이 없습니다.</td></tr>';
+    return `<tr><td>${escapeHtml(row.studentId)}</td><td>${escapeHtml(row.name)}</td><td class="${Number(row.overallProgress) >= 100 ? "progress-complete" : ""}">${Number(row.overallProgress) || 0}%</td><td>${Number(row.completedLessons) || 0}/8</td>${lessons.map(value => `<td class="${value >= 100 ? "progress-complete" : value === 0 ? "progress-none" : ""}">${value}%</td>`).join("")}<td>${escapeHtml(row.lastAccessAt || "-")}</td></tr>`;
+  }).join("") : '<tr><td class="admin-empty" colspan="13">등록된 수강생이 없습니다.</td></tr>';
 }
 async function loadAdminDashboard() {
   $("adminDataMessage").textContent = "최신 진도 정보를 불러오고 있습니다…";
