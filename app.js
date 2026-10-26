@@ -103,7 +103,6 @@ function buildResultPayload(eventType, examResult = null) {
     eventType,
     studentId: session.studentId,
     name: session.name,
-    birthDate: session.birthDate || "",
     authToken: session.authToken || "",
     lessonProgress: progress.map(percent),
     overallProgress: progress.every(p => p.completed) ? 100 : overall(progress),
@@ -333,11 +332,6 @@ function loadCloudLessonSettings() {
   script.src = `${CONFIG.resultsEndpoint}?action=settings&callback=${callbackName}&t=${Date.now()}`;
   document.head.appendChild(script);
 }
-function normalizeBirthDate(value) {
-  const digits = String(value || "").replace(/[^0-9]/g, "");
-  return digits.length === 8 ? digits.slice(2) : digits;
-}
-
 function postForSecureResponse(payload, expectedSource) {
   return new Promise(resolve => {
     const nonce = `request_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -423,14 +417,14 @@ function enterAdminDashboard() {
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const values = { studentId: $("studentId").value.trim(), name: $("studentName").value.trim(), birthDate: $("birthDate").value };
+  const values = { studentId: $("studentId").value.trim(), name: $("studentName").value.trim() };
   const submitButton = e.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   $("loginError").textContent = "등록 정보를 확인하고 있습니다…";
   const result = await authenticateStudent(values);
   submitButton.disabled = false;
   if (!result.ok) { $("loginError").textContent = result.message || "등록된 수강생 정보와 일치하지 않습니다."; return; }
-  session = { studentId: result.studentId, name: result.name, birthDate: result.birthDate, authToken: result.authToken, authExpiresAt: result.authExpiresAt || null, loginAt: new Date().toISOString() };
+  session = { studentId: result.studentId, name: result.name, authToken: result.authToken, authExpiresAt: result.authExpiresAt || null, loginAt: new Date().toISOString() };
   if (Array.isArray(result.lessonProgress)) applyCloudProgress(result.lessonProgress);
   else if (result.hasProgressRecord === false) localStorage.removeItem(progressKey());
   if (result.hasExamRecord === false) {

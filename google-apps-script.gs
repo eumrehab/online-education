@@ -28,7 +28,6 @@ function doPost(e) {
     if (!identity) throw new Error("로그인 유효시간이 만료되었습니다. 다시 로그인해 주세요.");
     data.studentId = identity.studentId;
     data.name = identity.name;
-    data.birthDate = identity.birthDate;
     upsertStudent(book.getSheetByName("수강생 현황"), data);
     upsertProgress(book.getSheetByName("강의별 진도"), data);
     if (data.eventType === "exam_submit") upsertExam(book.getSheetByName("시험 결과"), data);
@@ -53,17 +52,15 @@ function authenticateStudent(book, data) {
     const sheet = findSheetByNormalizedName(book, "수강생명단");
     if (!sheet || sheet.getLastRow() < 2) throw new Error("수강생 명단이 등록되지 않았습니다.");
     const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getDisplayValues();
-    const inputBirth = normalizeBirthDate(data.birthDate);
     const row = rows.find(value => String(value[0]).trim() === String(data.studentId).trim()
       && String(value[1]).trim() === String(data.name).trim()
-      && normalizeBirthDate(value[2]) === inputBirth
       && String(value[3] || "").replace(/\s/g, "") === "사용");
     if (!row) {
       cache.put(attemptKey, String(attempts + 1), 600);
       return loginResponse({ ok: false, nonce, message: "등록된 수강생 정보와 일치하지 않습니다." });
     }
     const token = Utilities.getUuid() + Utilities.getUuid();
-    const identity = { studentId: String(row[0]).trim(), name: String(row[1]).trim(), birthDate: inputBirth };
+    const identity = { studentId: String(row[0]).trim(), name: String(row[1]).trim() };
     const lessonProgress = readStudentProgress(book.getSheetByName("강의별 진도"), identity.studentId);
     cache.remove(attemptKey);
     cache.put("session_" + token, JSON.stringify(identity), 21600);
@@ -113,7 +110,7 @@ function setupStudentRosterSheet() {
   const book = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet = book.getSheetByName("수강생 명단");
   if (!sheet) sheet = book.insertSheet("수강생 명단");
-  sheet.getRange(1, 1, 1, 5).setValues([["학번", "이름", "생년월일", "상태", "관리자 화면"]]);
+  sheet.getRange(1, 1, 1, 5).setValues([["학번", "이름", "비고", "상태", "관리자 화면"]]);
   sheet.getRange("A:C").setNumberFormat("@");
   sheet.setFrozenRows(1);
   sheet.autoResizeColumns(1, 5);
@@ -124,11 +121,6 @@ function verifySession(token) {
   const saved = CacheService.getScriptCache().get("session_" + String(token));
   if (!saved) return null;
   try { return JSON.parse(saved); } catch (_) { return null; }
-}
-
-function normalizeBirthDate(value) {
-  const digits = String(value || "").replace(/[^0-9]/g, "");
-  return digits.length === 8 ? digits.slice(2) : digits;
 }
 
 function loginResponse(data) {
@@ -336,7 +328,7 @@ function findStudentRow(sheet, studentId) {
 function upsertStudent(sheet, data) {
   const row = findStudentRow(sheet, data.studentId);
   sheet.getRange(row, 1, 1, 6).setValues([[
-    String(data.studentId), data.name, String(data.birthDate || ""),
+    String(data.studentId), data.name, "",
     Number(data.overallProgress || 0) / 100, Number(data.completedLessons || 0),
     new Date(data.lastAccessAt)
   ]]);
